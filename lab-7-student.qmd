@@ -7,6 +7,7 @@ execute:
   echo: true
   error: true
   embed-resources: true
+  output: false
 code-tools: true
 toc: true
 theme: default
@@ -57,7 +58,7 @@ This code chunk will read in **all** of the tables of data for you. Don't modify
 remove this! Take some time to look at each file type so that 
 
 ```{r}
-#| message: false
+#| message: true
 #| warning: false
 #| label: read-in-data
 
@@ -80,14 +81,18 @@ Detective Wickham reaches out to you...
 
 **Step 1: Find the police report in `crime_scene_report`. Then used the information in the report to move on to the next data source based on the information learned.**
 
+#### Finding Relevant Report
 ```{r}
-# Code for looking at the relevant crime scene report.
-
-
+#| label: Finding Relevant Report
+# Filtered police reports to find one with relevant characteristics.
+crime_scene_report %>% 
+  filter(date == 20180115 &
+           type == "murder" &
+           city == "SQL City") %>% 
+  select(description)
 ```
 
-
-
+> Security footage shows that there were 2 witnesses. The first witness lives at the last house on "Northwestern Dr". The second witness, named Annabel, lives somewhere on "Franklin Ave".
 
 **Next Steps: Follow the evidence to the person responsible for the murder, building a report as you go.**
 There are accomplices, some knowingly and some unknowingly, but there is only one mastermind.
@@ -103,10 +108,118 @@ tables manually. Functions from `stringr` and `lubridate` will also be useful.
 + Comment your code.
 + Cite any external sources you use to solve the mystery.
 
+#### Renaming Variables
+```{r}
+#| label: Renaming Variables
+# Renaming variables to facilitate data joins.
+interview <- interview %>% 
+  rename(id = person_id)
+
+get_fit_now_member <- get_fit_now_member %>% 
+  rename(gym_id = id,
+         id = person_id)
+
+facebook_event_checkin <- facebook_event_checkin %>% 
+  rename(id = person_id)
+
+drivers_license <- drivers_license %>% 
+  rename(license_id = id)
+```
+
+#### Joining Data
+```{r}
+#| label: Joining Data
+# Joining all the dataframes into one central dataframe.
+full_info <- person %>% 
+  left_join(income,
+            by = "ssn") %>% 
+  left_join(interview,
+            by = "id") %>% 
+  left_join(get_fit_now_member,
+            by = "id") %>% 
+  left_join(facebook_event_checkin,
+            by = "id") %>% 
+  left_join(drivers_license,
+            by = "license_id") %>% 
+  select(-name.y) %>% 
+  rename(name = name.x) %>% 
+  distinct(id,
+           .keep_all = TRUE)
+```
+
+
+
+#### First Witness & Statement
+```{r}
+#| label: First Witness
+# Finding the name and statement of the first witness.
+full_info %>% 
+  filter(address_street_name == "Northwestern Dr") %>% 
+  arrange(desc(address_number)) %>% 
+  slice_head(n = 1) %>% 
+  select(name,
+         transcript)
+```
+
+> Morty's Statement: I heard a gunshot and then saw a man run out. He had a "Get Fit Now Gym" bag. The membership number on the bag started with "*48Z*". Only gold members have those bags. The man got into a car with a plate that included "*H42W*".
+
+#### Second Witness & Statement
+```{r}
+#| label: Second Witness
+# Finding the name and statement of the second witness.
+full_info %>% 
+  filter(address_street_name == "Franklin Ave") %>% 
+  mutate(first_name = substring(name, 1, 7)) %>% 
+  filter(first_name == "Annabel") %>% 
+  select(name,
+         transcript)
+```
+
+> Annabel's Statement: I saw the murder happen, and I recognized the killer from my gym when I was working out last week on *January the 9th*.
+
+#### Gym Membership Numbers 
+```{r}
+#| label: Gym Membership Numbers
+# Finding gym membership id numbers that fit the witness's reports.
+get_fit_now_check_in %>% 
+  mutate(first3 = substring(membership_id, 1, 3)) %>% 
+  filter(first3 == "48Z" &
+         check_in_date == 20180109) %>% 
+  select(membership_id)
+```
+
+#### Relevant Gym Members' Names & Statements
+```{r}
+#| label: Relevant Gym Members' Names & Statements
+# Finding the names and statements of gym members whose id numbers fit the witness's reports.
+full_info %>% 
+  filter(!is.na(gym_id)) %>% 
+  filter(id %in% c(61749, 62783) |
+         gym_id %in% c("48Z7A", "48Z55")) %>% 
+  select(name,
+         transcript)
+```
+
+> Jeremy Bowers statement: "I was hired by a woman with *a lot of money*. I don't know her name but I know she's around 5'5" (*65*") or 5'7" (*67*"). She has red hair and she drives a Tesla *Model S*. I know that she attended the *SQL Symphony Concert* 3 times in December 2017."
+
+#### Final Suspect
+```{r}
+#| label: Final Suspect
+#| output: true
+# Finding our final suspect, based on information obtained from Jeremy Bowers' statement.
+full_info %>% 
+  filter(gender == "female" &
+           height >= 65 &
+           height <= 67 &
+           hair_color == "red" &
+           car_model == "Model S" &
+           event_name == "SQL Symphony Concert") %>% 
+  select(name)
+```
 
 
 ::: callout-note
 ## And the final suspect is...
 
-*put the name of the person responsible for the murder here.*
+*Miranda Priestly*
 :::
